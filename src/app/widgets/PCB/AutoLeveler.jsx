@@ -1,8 +1,6 @@
 import PropTypes from 'prop-types';
 import React, { PureComponent } from 'react';
 
-import controller from 'app/lib/controller';
-import log from 'app/lib/log';
 import {
     // Units
     IMPERIAL_UNITS,
@@ -10,6 +8,10 @@ import {
     // Controllers
     GRBL
 } from 'app/constants';
+import controller from 'app/lib/controller';
+import i18n from 'app/lib/i18n';
+import log from 'app/lib/log';
+
 import { startAutolevel, applyCompensation } from './lib/autoLevel';
 
 class AutoLeveler extends PureComponent {
@@ -210,8 +212,8 @@ class AutoLeveler extends PureComponent {
             },
             // TODO: Do something with it
             alignmentHole: [
-                { x: null, y: null },
-                { x: null, y: null }
+                { x: undefined, y: undefined },
+                { x: undefined, y: undefined }
             ],
             // TODO: Retrieve from store
             isAutolevelRunning: false,
@@ -266,9 +268,20 @@ class AutoLeveler extends PureComponent {
             this.state.bbox.min.y === undefined;
 
         return (
-            <div className="form-group">
-                <div className="input-group input-group-sm">
-                    <label>Margins
+            <div>
+                <div className="form-group">
+                    <label className="control-label">{i18n._('Loaded G-code')}</label>
+                    <div className="input-group input-group-sm">
+                        <input
+                            type="text"
+                            className="form-control"
+                            value={this.state.gcodeFileName}
+                            disabled={true}
+                        />
+                    </div>
+
+                    <label className="control-label">{i18n._('Margins')}</label>
+                    <div className="input-group input-group-sm">
                         <input
                             type="number"
                             className="form-control"
@@ -278,57 +291,98 @@ class AutoLeveler extends PureComponent {
                             disabled={isDisabled}
                             onChange={actions.onChangeMargin}
                         />
-                    </label>
-                    <label className="control-label">Z Safe</label>
-                    <input
-                        type="number"
-                        className="form-control"
-                        step="0.5"
-                        min="0.5"
-                        defaultValue={zSafe}
-                        disabled={isDisabled}
-                        onChange={actions.onChangeZSafe}
-                    />
-                    <label className="control-label">Delta</label>
-                    <input
-                        type="number"
-                        className="form-control"
-                        step="1"
-                        min="1"
-                        defaultValue={delta}
-                        disabled={isDisabled}
-                        onChange={actions.onChangeDelta}
-                    />
-                    <label className="control-label">Feedrate</label>
-                    <input
-                        type="number"
-                        className="form-control"
-                        step="10"
-                        min="1"
-                        defaultValue={feedrate}
-                        disabled={isDisabled}
-                        onChange={actions.onChangeFeedrate}
-                    />
+                    </div>
 
-                    <hr />
-                    Alignment hole left: {this.state.alignmentHole[0].x}, {this.state.alignmentHole[0].y}
-                    Alignment hole right: {this.state.alignmentHole[1].x}, {this.state.alignmentHole[1].y}
+                    <label className="control-label">{i18n._('Z Safe')}</label>
+                    <div className="input-group input-group-sm">
+                        <input
+                            type="number"
+                            className="form-control"
+                            step="0.5"
+                            min="0.5"
+                            defaultValue={zSafe}
+                            disabled={isDisabled}
+                            onChange={actions.onChangeZSafe}
+                        />
+                    </div>
+
+                    <label className="control-label">{i18n._('Delta')}</label>
+                    <div className="input-group input-group-sm">
+                        <input
+                            type="number"
+                            className="form-control"
+                            step="1"
+                            min="1"
+                            defaultValue={delta}
+                            disabled={isDisabled}
+                            onChange={actions.onChangeDelta}
+                        />
+                    </div>
+
+                    <label className="control-label">{i18n._('Feedrate')}</label>
+                    <div className="input-group input-group-sm">
+                        <input
+                            type="number"
+                            className="form-control"
+                            step="10"
+                            min="1"
+                            defaultValue={feedrate}
+                            disabled={isDisabled}
+                            onChange={actions.onChangeFeedrate}
+                        />
+                    </div>
+
+                    {/*
+                    <label className="control-label">{i18n._('Left Alignment Hole')}</label>
+                    <div className="input-group input-group-xs">
+                        <input
+                            type="number"
+                            className="form-control"
+                            value={this.state.alignmentHole[0].x}
+                            disabled={true}
+                        />
+                        <input
+                            type="number"
+                            className="form-control"
+                            value={this.state.alignmentHole[0].y}
+                            disabled={true}
+                        />
+                    </div>
+                    <label className="control-label">{i18n._('Right Alignment Hole')}</label>
+                    <div className="input-group input-group-xs">
+                        <input
+                            type="number"
+                            className="form-control"
+                            value={this.state.alignmentHole[1].x}
+                            disabled={true}
+                        />
+                        <input
+                            type="number"
+                            className="form-control"
+                            value={this.state.alignmentHole[1].y}
+                            disabled={true}
+                        />
+                    </div>
+                    */}
+
                 </div>
-                <div className="btn-group btn-group-sm">
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={isDisabled}
-                        onClick={() => {
-                            this.setState({ isAutolevelRunning: true });
-                            // TODO: Move this to its clear function
-                            this.setState({ plannedPointCount: 0, probedPoints: [] });
-                            const plannedPointCount = startAutolevel(bbox, margin, delta, zSafe, feedrate);
-                            this.setState({ plannedPointCount });
-                        }}
-                    >
-                        Run Autolevel
-                    </button>
+                <div className="form-group">
+                    <div className="btn-group btn-group-sm">
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={isDisabled}
+                            onClick={() => {
+                                this.setState({ isAutolevelRunning: true });
+                                // TODO: Move this to its clear function
+                                this.setState({ plannedPointCount: 0, probedPoints: [] });
+                                const plannedPointCount = startAutolevel(bbox, margin, delta, zSafe, feedrate);
+                                this.setState({ plannedPointCount });
+                            }}
+                        >
+                            {i18n._('Run Autolevel')}
+                        </button>
+                    </div>
                 </div>
             </div>
         );

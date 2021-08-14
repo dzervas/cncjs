@@ -126,6 +126,13 @@ class WidgetManager extends PureComponent {
             details: i18n._('This widget lets you monitor a webcam.'),
             visible: true,
             disabled: false
+        },
+        {
+            id: 'pcb',
+            caption: i18n._('PCB Factory Widget'),
+            details: i18n._('This widget helps you create PCBs.'),
+            visible: true,
+            disabled: false
         }
     ];
 

@@ -139,6 +139,9 @@ const defaultState = {
                 heatedBed: 60
             }
         },
+        pcb: {
+            minimized: false
+        },
         probe: {
             minimized: false,
             probeCommand: 'G38.2',

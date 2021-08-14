@@ -14,6 +14,7 @@ import log from 'app/lib/log';
 import WidgetConfig from 'app/widgets/WidgetConfig';
 
 import { startAutolevel, applyCompensation } from './lib/autoLevel';
+import ConfirmModal from './ConfirmModal';
 
 class AutoLeveler extends PureComponent {
     static propTypes = {
@@ -74,7 +75,7 @@ class AutoLeveler extends PureComponent {
             // TODO: Ask if mesh should be deleted
 
             if (name.indexOf('#AL:') === 0) {
-                log.debug(`Skipping gcode load of ${name} as it's pre-leveled`);
+                log.warn(`Skipping gcode load of ${name} as it's pre-leveled`);
                 return;
             }
 
@@ -135,7 +136,16 @@ class AutoLeveler extends PureComponent {
             this.setState({ gcodeLoaded: true });
         },
         'gcode:unload': () => {
-            this.setState({ gcodeLoaded: false, gcode: '' });
+            this.setState({
+                confirmModal: {
+                    show: true,
+                    title: 'PCB Factory',
+                    subtitle: `Do you want to unload the current mesh of the file "${this.state.gcodeFileName}"`,
+                    onConfirm: () => {
+                        this.setState({ gcodeLoaded: false, gcode: '' });
+                    }
+                }
+            });
         },
         'serialport:read': (data) => {
             // TODO: Return a promise? or at the "start level" thing?
@@ -197,6 +207,13 @@ class AutoLeveler extends PureComponent {
 
     getInitialState() {
         return {
+            confirmModal: {
+                show: false,
+                title: 'PCB Autoleveler',
+                subtitle: '',
+                onConfirm: () => {}
+            },
+
             units: METRIC_UNITS,
             gcode: '',
             gcodeFileName: '',
@@ -277,8 +294,10 @@ class AutoLeveler extends PureComponent {
             zSafe,
             delta,
             feedrate,
-
-            isAutolevelRunning
+            isAutolevelRunning,
+            confirmModal,
+            gcodeLoaded,
+            gcodeFileName
         } = this.state;
         const isDisabled = isAutolevelRunning ||
             this.state.bbox.max.x === undefined ||
@@ -294,7 +313,7 @@ class AutoLeveler extends PureComponent {
                         <input
                             type="text"
                             className="form-control"
-                            value={this.state.gcodeFileName}
+                            value={gcodeLoaded && gcodeFileName}
                             disabled={true}
                         />
                     </div>
@@ -403,6 +422,16 @@ class AutoLeveler extends PureComponent {
                         </button>
                     </div>
                 </div>
+                { confirmModal.show && (
+                    <ConfirmModal
+                        title={confirmModal.title}
+                        subtitle={confirmModal.subtitle}
+                        onConfirm={confirmModal.onConfirm}
+                        onClose={() => {
+                            this.setState({ confirmModal: { show: false } });
+                        }}
+                    />
+                ) }
             </div>
         );
     }

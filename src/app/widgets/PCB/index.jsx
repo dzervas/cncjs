@@ -201,7 +201,7 @@ class App extends PureComponent {
                         { [styles.hidden]: minimized }
                     )}
                 >
-                    <AutoLeveler />
+                    <AutoLeveler widgetId={widgetId} />
                 </Widget.Content>
             </Widget>
         );

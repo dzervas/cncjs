@@ -536,5 +536,13 @@
     "The URL must be for a Motion JPEG (mjpeg) HTTP or RTSP stream.": "De URL moet voor een Motion JPEG (mjpeg), HTTP-stream of RTSP-stream zijn.",
     "PCB Factory Widget": "",
     "This widget helps you create PCBs.": "",
-    "PCB Factory": ""
+    "PCB Factory": "",
+    "Loaded G-code": "",
+    "Margins": "",
+    "Z Safe": "",
+    "Delta": "",
+    "Feedrate": "",
+    "Left Alignment Hole": "",
+    "Right Alignment Hole": "",
+    "Run Autolevel": ""
 }

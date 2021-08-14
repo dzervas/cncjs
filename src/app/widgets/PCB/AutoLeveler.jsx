@@ -11,33 +11,38 @@ import {
 import controller from 'app/lib/controller';
 import i18n from 'app/lib/i18n';
 import log from 'app/lib/log';
+import WidgetConfig from 'app/widgets/WidgetConfig';
 
 import { startAutolevel, applyCompensation } from './lib/autoLevel';
 
 class AutoLeveler extends PureComponent {
     static propTypes = {
-        state: PropTypes.object,
-        actions: PropTypes.object
+        widgetId: PropTypes.string.isRequired,
+        // onFork: PropTypes.func.isRequired,
+        // onRemove: PropTypes.func.isRequired,
+        // sortable: PropTypes.object
     };
+
+    config = new WidgetConfig(this.props.widgetId);
 
     state = this.getInitialState();
 
     actions = {
         // TODO: Save to store
         onChangeMargin: (event) => {
-            this.setState({ margin: event.value });
+            this.setState({ margin: event.target.value });
         },
 
         onChangeZSafe: (event) => {
-            this.setState({ zSafe: event.value });
+            this.setState({ zSafe: event.target.value });
         },
 
         onChangeDelta: (event) => {
-            this.setState({ delta: event.value });
+            this.setState({ delta: event.target.value });
         },
 
         onChangeFeedrate: (event) => {
-            this.setState({ feedrate: event.value });
+            this.setState({ feedrate: event.target.value });
         }
     }
 
@@ -217,10 +222,10 @@ class AutoLeveler extends PureComponent {
             ],
             // TODO: Retrieve from store
             isAutolevelRunning: false,
-            delta: 10.0,
-            zSafe: 2.0,
-            feedrate: 25,
-            margin: 2.5,
+            delta: this.config.get('delta', 10.0),
+            zSafe: this.config.get('zsafe', 2.0),
+            feedrate: this.config.get('feedrate', 25),
+            margin: this.config.get('feedrate', 2.5),
             gcodeLoaded: false,
 
             plannedPointCount: 0,
@@ -234,6 +239,20 @@ class AutoLeveler extends PureComponent {
 
     componentWillUnmount() {
         this.removeControllerEvents();
+    }
+
+    componentDidUpdate(prevProps, prevState) {
+        const {
+            margin,
+            zSafe,
+            delta,
+            feedrate
+        } = this.state;
+
+        this.config.set('margin', margin);
+        this.config.set('zsafe', zSafe);
+        this.config.set('delta', delta);
+        this.config.set('feedrate', feedrate);
     }
 
     addControllerEvents() {
@@ -251,7 +270,7 @@ class AutoLeveler extends PureComponent {
     }
 
     render() {
-        const actions = { ...actions };
+        const actions = { ...this.actions };
         const {
             bbox,
             margin,

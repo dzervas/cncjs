@@ -13,7 +13,7 @@ import i18n from 'app/lib/i18n';
 import log from 'app/lib/log';
 import WidgetConfig from 'app/widgets/WidgetConfig';
 
-import { startAutolevel, applyCompensation } from './lib/autoLevel';
+import { generateAutolevelGcode, applyCompensation } from './lib/autoLevel';
 import ConfirmModal from './ConfirmModal';
 
 class AutoLeveler extends PureComponent {
@@ -31,19 +31,77 @@ class AutoLeveler extends PureComponent {
     actions = {
         // TODO: Save to store
         onChangeMargin: (event) => {
-            this.setState({ margin: event.target.value });
+            this.setState({ margin: parseFloat(event.target.value) });
         },
 
         onChangeZSafe: (event) => {
-            this.setState({ zSafe: event.target.value });
+            this.setState({ zSafe: parseFloat(event.target.value) });
         },
 
         onChangeDelta: (event) => {
-            this.setState({ delta: event.target.value });
+            this.setState({ delta: parseFloat(event.target.value) });
         },
 
         onChangeFeedrate: (event) => {
-            this.setState({ feedrate: event.target.value });
+            this.setState({ feedrate: parseFloat(event.target.value) });
+        },
+
+        doProbeArea: (_event, force = false) => {
+            log.debug(`doProbeArea: force ${force} points ${JSON.stringify(this.state.probedPoints)} gcodeLoaded ${this.state.gcodeLoaded}`);
+            if (this.state.probedPoints.length > 0 && this.state.gcodeLoaded && !force) {
+                this.setState({
+                    confirmModal: {
+                        show: true,
+                        title: 'PCB Autoleveler',
+                        subtitle: `Do you want to clear the current mesh of the file "${this.state.gcodeFileName}" and probe the area again to generate it?`,
+                        onConfirm: () => {
+                            this.setState({
+                                plannedPointCount: 0,
+                                probedPoints: []
+                            });
+                            this.actions.doProbeArea(_event, true);
+                        }
+                    }
+                });
+                return;
+            }
+
+            const {
+                bbox,
+                margin,
+                delta,
+                zSafe,
+                feedrate
+            } = this.state;
+
+            const { plannedPointCount, code } = generateAutolevelGcode(bbox, margin, delta, zSafe, feedrate);
+
+            this.setState({
+                confirmModal: {
+                    show: true,
+                    title: 'PCB Autoleveler',
+                    subtitle: (
+                        <div>
+                            <div style={{ marginBottom: 10 }}>
+                                Send the following G-code to generate mesh for &quot;{this.state.gcodeFileName}&quot;?
+                            </div>
+                            <pre style={{ minHeight: 240 }}>
+                                <code>{code.join('\n')}</code>
+                            </pre>
+                        </div>
+                    ),
+                    onConfirm: () => {
+                        this.setState({
+                            isAutolevelRunning: true,
+                            plannedPointCount: 0,
+                            probedPoints: []
+                        });
+
+                        controller.command('gcode', code.join('\n'));
+                        this.setState({ plannedPointCount });
+                    }
+                }
+            });
         }
     }
 
@@ -122,27 +180,34 @@ class AutoLeveler extends PureComponent {
             this.setState({
                 gcode,
                 gcodeFileName: name,
+                gcodeLoaded: true,
                 bbox: {
                     min: { x: xmin, y: ymin },
                     max: { x: xmax, y: ymax }
                 },
-                // TODO: Make these configurable
-                alignmentHole: [
-                    { x: xmin - 1, y: ymax / 2 },
-                    { x: xmax + 1, y: ymax / 2 }
-                ]
             });
-            log.info(`New Alignment Holes: left X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y} right X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y}`);
-            this.setState({ gcodeLoaded: true });
         },
         'gcode:unload': () => {
+            if (!this.state.gcodeLoaded || this.state.probedPoints.length === 0) {
+                this.setState({
+                    gcodeLoaded: false,
+                    gcode: '',
+                    probedPoints: []
+                });
+                return;
+            }
+
             this.setState({
                 confirmModal: {
                     show: true,
                     title: 'PCB Factory',
                     subtitle: `Do you want to unload the current mesh of the file "${this.state.gcodeFileName}"`,
                     onConfirm: () => {
-                        this.setState({ gcodeLoaded: false, gcode: '' });
+                        this.setState({
+                            gcodeLoaded: false,
+                            gcode: '',
+                            probedPoints: []
+                        });
                     }
                 }
             });
@@ -209,7 +274,7 @@ class AutoLeveler extends PureComponent {
         return {
             confirmModal: {
                 show: false,
-                title: 'PCB Autoleveler',
+                title: 'PCB Factory',
                 subtitle: '',
                 onConfirm: () => {}
             },
@@ -232,17 +297,11 @@ class AutoLeveler extends PureComponent {
                     y: undefined
                 }
             },
-            // TODO: Do something with it
-            alignmentHole: [
-                { x: undefined, y: undefined },
-                { x: undefined, y: undefined }
-            ],
-            // TODO: Retrieve from store
             isAutolevelRunning: false,
             delta: this.config.get('delta', 10.0),
             zSafe: this.config.get('zsafe', 2.0),
             feedrate: this.config.get('feedrate', 25),
-            margin: this.config.get('feedrate', 2.5),
+            margin: this.config.get('margin', 2.5),
             gcodeLoaded: false,
 
             plannedPointCount: 0,
@@ -289,7 +348,6 @@ class AutoLeveler extends PureComponent {
     render() {
         const actions = { ...this.actions };
         const {
-            bbox,
             margin,
             zSafe,
             delta,
@@ -299,11 +357,12 @@ class AutoLeveler extends PureComponent {
             gcodeLoaded,
             gcodeFileName
         } = this.state;
-        const isDisabled = isAutolevelRunning ||
+        const isDisabled = isAutolevelRunning || !gcodeLoaded ||
             this.state.bbox.max.x === undefined ||
             this.state.bbox.max.y === undefined ||
             this.state.bbox.min.x === undefined ||
-            this.state.bbox.min.y === undefined;
+            this.state.bbox.min.y === undefined ||
+            gcodeFileName === undefined;
 
         return (
             <div>
@@ -325,7 +384,7 @@ class AutoLeveler extends PureComponent {
                             className="form-control"
                             step="0.5"
                             min="0"
-                            defaultValue={margin}
+                            value={margin}
                             disabled={isDisabled}
                             onChange={actions.onChangeMargin}
                         />
@@ -338,7 +397,7 @@ class AutoLeveler extends PureComponent {
                             className="form-control"
                             step="0.5"
                             min="0.5"
-                            defaultValue={zSafe}
+                            value={zSafe}
                             disabled={isDisabled}
                             onChange={actions.onChangeZSafe}
                         />
@@ -351,7 +410,7 @@ class AutoLeveler extends PureComponent {
                             className="form-control"
                             step="1"
                             min="1"
-                            defaultValue={delta}
+                            value={delta}
                             disabled={isDisabled}
                             onChange={actions.onChangeDelta}
                         />
@@ -364,45 +423,11 @@ class AutoLeveler extends PureComponent {
                             className="form-control"
                             step="10"
                             min="1"
-                            defaultValue={feedrate}
+                            value={feedrate}
                             disabled={isDisabled}
                             onChange={actions.onChangeFeedrate}
                         />
                     </div>
-
-                    {/*
-                    <label className="control-label">{i18n._('Left Alignment Hole')}</label>
-                    <div className="input-group input-group-xs">
-                        <input
-                            type="number"
-                            className="form-control"
-                            value={this.state.alignmentHole[0].x}
-                            disabled={true}
-                        />
-                        <input
-                            type="number"
-                            className="form-control"
-                            value={this.state.alignmentHole[0].y}
-                            disabled={true}
-                        />
-                    </div>
-                    <label className="control-label">{i18n._('Right Alignment Hole')}</label>
-                    <div className="input-group input-group-xs">
-                        <input
-                            type="number"
-                            className="form-control"
-                            value={this.state.alignmentHole[1].x}
-                            disabled={true}
-                        />
-                        <input
-                            type="number"
-                            className="form-control"
-                            value={this.state.alignmentHole[1].y}
-                            disabled={true}
-                        />
-                    </div>
-                    */}
-
                 </div>
                 <div className="form-group">
                     <div className="btn-group btn-group-sm">
@@ -410,13 +435,7 @@ class AutoLeveler extends PureComponent {
                             type="button"
                             className="btn btn-primary"
                             disabled={isDisabled}
-                            onClick={() => {
-                                this.setState({ isAutolevelRunning: true });
-                                // TODO: Move this to its clear function
-                                this.setState({ plannedPointCount: 0, probedPoints: [] });
-                                const plannedPointCount = startAutolevel(bbox, margin, delta, zSafe, feedrate);
-                                this.setState({ plannedPointCount });
-                            }}
+                            onClick={actions.doProbeArea}
                         >
                             {i18n._('Run Autolevel')}
                         </button>

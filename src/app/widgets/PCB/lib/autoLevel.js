@@ -1,20 +1,13 @@
-import controller from 'app/lib/controller';
 import log from 'app/lib/log';
 import {
     IMPERIAL_UNITS,
     METRIC_UNITS,
 } from 'app/constants';
+// Code got from https://github.com/kreso-t/cncjs-kt-ext
 
-// TODO: Add function to clear current probes
-function startAutolevel(bbox, margin, delta, zSafe, feedrate) {
-    // Code got from https://github.com/kreso-t/cncjs-kt-ext
+function generateAutolevelGcode(bbox, margin, delta, zSafe, feedrate) {
     log.info('Starting autoleveling');
 
-    // let workCoordinates = {
-    //     x: machinePosition.x - workPosition.x,
-    //     y: machinePosition.y - workPosition.y,
-    //     z: machinePosition.z - workPosition.z
-    // };
     let plannedPointCount = 0;
     // TODO: Check for undefined and faulty numbers
 
@@ -31,8 +24,8 @@ function startAutolevel(bbox, margin, delta, zSafe, feedrate) {
     // https://github.com/cncjs/cncjs/blob/6f2ec1574eace3c99b4a18c3de199b222524d0e1/src/app/widgets/Probe/index.jsx#L132
     code.push('G21');
     code.push('G90');
-    code.push(`G0 Z${zSafe}`);
-    code.push(`G0 X${xmin.toFixed(3)} Y${ymin.toFixed(3)} Z${zSafe}`);
+    code.push(`G0 X${xmin.toFixed(3)} Y${ymin.toFixed(3)}`);
+    // TODO: Set specific max depth
     code.push(`G38.2 Z-${zSafe + 1} F${feedrate / 2}`);
     code.push('G10 L20 P1 Z0'); // set the z zero
     code.push(`G0 Z${zSafe}`);
@@ -48,7 +41,7 @@ function startAutolevel(bbox, margin, delta, zSafe, feedrate) {
 
         let x = xmin - dx;
         if (y <= ymin + 0.01) {
-            // don't probe first point twice
+            // Don't probe first point twice
             x = xmin;
         }
 
@@ -65,11 +58,8 @@ function startAutolevel(bbox, margin, delta, zSafe, feedrate) {
     }
 
     log.info(`Sending GCode:\n${code.join('\n')}\n`);
-    // TODO: Throw a box with the G-code in it for confirmation like probe
-    controller.command('gcode', code.join('\n'));
-    log.info('Would start listener');
 
-    return plannedPointCount;
+    return { plannedPointCount, code };
 }
 
 function applyCompensation(gcode, probedPoints, delta) {
@@ -94,7 +84,7 @@ function applyCompensation(gcode, probedPoints, delta) {
     lines.forEach(line => {
         let lineStripped = stripComments(line);
         if (/(G38.+|G5.+|G10|G4.+|G92|G92.1)/gi.test(lineStripped)) {
-            // skip compensation for these G-Codes
+            // Skip compensation for these G-Codes
             result.push(lineStripped);
         } else {
             if (/G91/i.test(lineStripped)) {
@@ -111,7 +101,7 @@ function applyCompensation(gcode, probedPoints, delta) {
             }
 
             if (!/(X|Y|Z)/gi.test(lineStripped)) {
-                result.push(lineStripped); // no coordinate change --> copy to output
+                result.push(lineStripped); // No coordinate change --> copy to output
             } else {
                 let xMatch = /X([\.\+\-\d]+)/gi.exec(lineStripped);
                 if (xMatch) {
@@ -129,7 +119,7 @@ function applyCompensation(gcode, probedPoints, delta) {
                 }
 
                 if (abs) {
-                    // strip coordinates
+                    // Strip coordinates
                     lineStripped = lineStripped.replace(/([XYZ])([\.\+\-\d]+)/gi, '');
                     if (p0Initialized) {
                         let segs = splitToSegments(p0, pt, delta);
@@ -152,14 +142,12 @@ function applyCompensation(gcode, probedPoints, delta) {
                     x: pt.x,
                     y: pt.y,
                     z: pt.z
-                }; // clone
+                }; // Clone
             }
         }
     });
 
-    // const newGcodeFileName = '#AL:' + gcodeFileName;
     log.debug(result.join('\n'));
-    // controller.command('gcode:load', newGcodeFileName, result.join('\n'));
     return result.join('\n');
 }
 
@@ -204,31 +192,31 @@ function formatPt(pt) {
 
 function splitToSegments(p1, p2, units, delta) {
     let res = [];
-    let v = sub3(p2, p1); // delta
-    let dist = Math.sqrt(distanceSquared3(p1, p2)); // distance
+    let v = sub3(p2, p1); // Delta
+    let dist = Math.sqrt(distanceSquared3(p1, p2)); // Distance
     let dir = {
         x: v.x / dist,
         y: v.y / dist,
         z: v.z / dist
-    }; // direction vector
+    }; // Direction vector
     let maxSegLength = convertUnits(delta, METRIC_UNITS, units) / 2;
     res.push({
         x: p1.x,
         y: p1.y,
         z: p1.z
-    }); // first point
+    }); // First point
     for (let d = maxSegLength; d < dist; d += maxSegLength) {
         res.push({
             x: p1.x + dir.x * d,
             y: p1.y + dir.y * d,
             z: p1.z + dir.z * d
-        }); // split points
+        }); // Split points
     }
     res.push({
         x: p2.x,
         y: p2.y,
         z: p2.z
-    }); // last point
+    }); // Last point
     return res;
 }
 
@@ -244,7 +232,7 @@ function getThreeClosestPoints(pt, probedPoints) {
     let i = 0;
     while (res.length < 3 && i < probedPoints.length) {
         if (res.length === 2) {
-            // make sure points are not colinear
+            // Make sure points are not colinear
             if (!isColinear(sub3(res[1], res[0]), sub3(probedPoints[i], res[0]))) {
                 res.push(probedPoints[i]);
             }
@@ -271,11 +259,11 @@ function compensateZCoord(PtInOrMM, inputUnits, probedPoints) {
     }
 
     let normal = crossProduct3(sub3(points[1], points[0]), sub3(points[2], points[0]));
-    let pp = points[0]; // point on plane
-    let dz = 0; // compensation delta
+    let pp = points[0]; // Point on plane
+    let dz = 0; // Compensation delta
 
     if (normal.z !== 0) {
-        // find z at the point seg, on the plane defined by three points
+        // Find z at the point seg, on the plane defined by three points
         dz = pp.z - (normal.x * (ptMM.x - pp.x) + normal.y * (ptMM.y - pp.y)) / normal.z;
     } else {
         log.warn(formatPt(ptMM), 'normal.z is zero', formatPt(points[0]), formatPt(points[1]), formatPt(points[2]));
@@ -299,4 +287,4 @@ function convertUnits(value, inUnits, outUnits) {
     return value;
 }
 
-export { startAutolevel, applyCompensation };
+export { generateAutolevelGcode, applyCompensation };

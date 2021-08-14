@@ -8,7 +8,7 @@ class ConfirmModal extends PureComponent {
         onConfirm: PropTypes.func.isRequired,
         onClose: PropTypes.func.isRequired,
         title: PropTypes.string.isRequired,
-        subtitle: PropTypes.string.isRequired
+        subtitle: PropTypes.object.isRequired
     };
 
     render() {

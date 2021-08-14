@@ -3,7 +3,6 @@ import React, { PureComponent } from 'react';
 import classNames from 'classnames';
 
 import controller from 'app/lib/controller';
-import log from 'app/lib/log';
 import Widget from 'app/components/Widget';
 import Space from 'app/components/Space';
 import i18n from 'app/lib/i18n';
@@ -205,33 +204,6 @@ class App extends PureComponent {
                 </Widget.Content>
             </Widget>
         );
-    }
-
-    probeAlignmentHole(index) {
-        let code = [];
-        const x = this.state.alignmentHole[index].x;
-        const y = this.state.alignmentHole[index].y;
-
-        log.info(`Probing hole ${index}`);
-        code.push('G21');
-        code.push('G90');
-        code.push(`G0 X${x} Y${y}`);
-        // TODO: Configure max depth
-        code.push(`G38.2 Z-${this.state.zSafe} F${this.state.feedrate / 2}`);
-        code.push(`G0 X${x} Y${y}`);
-        code.push('G10 L20 P1 Z0');
-        code.push('G0 Z1');
-
-        // TODO: Throw a box with the G-code in it for confirmation like probe
-        controller.command('gcode', code.join('\n'));
-    }
-
-    makeAlignmentHole(index) {
-        let code = [];
-        code.push(`G1 Z-1.6 F${this.state.feedrate}`);
-
-        // TODO: Throw a box with the G-code in it for confirmation like probe
-        controller.command('gcode', code.join('\n'));
     }
 }
 

@@ -20,7 +20,8 @@ class App extends PureComponent {
     static propTypes = {
         widgetId: PropTypes.string.isRequired,
         state: PropTypes.object,
-        actions: PropTypes.object
+        actions: PropTypes.object,
+        sortable: PropTypes.object
     };
 
     state = this.getInitialState();
@@ -104,7 +105,7 @@ class App extends PureComponent {
             });
 
             // TODO: Show it in the UI
-            log.warn(`New BBox: xmin: ${xmin} xmax: ${xmax} ymin: ${ymin} ymax: ${ymax}`);
+            log.info(`New BBox: xmin: ${xmin} xmax: ${xmax} ymin: ${ymin} ymax: ${ymax}`);
             this.setState({
                 gcode,
                 gcodeFileName: name,
@@ -118,7 +119,7 @@ class App extends PureComponent {
                     { x: xmax + 1, y: ymax / 2 }
                 ]
             });
-            log.warn(`New Alignment Holes: left X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y} right X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y}`);
+            log.info(`New Alignment Holes: left X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y} right X ${this.state.alignmentHole[0].x} Y ${this.state.alignmentHole[0].y}`);
             this.setState({ gcodeLoaded: true });
         },
         'gcode:unload': () => {
@@ -234,7 +235,7 @@ class App extends PureComponent {
             }
 
             this.state.probedPoints.push(pt);
-            log.warn(`Probed ${this.state.probedPoints.length}/${this.state.plannedPointCount}> ${pt.x.toFixed(3)} ${pt.y.toFixed(3)} ${pt.z.toFixed(3)}`);
+            log.info(`Probed ${this.state.probedPoints.length}/${this.state.plannedPointCount}> ${pt.x.toFixed(3)} ${pt.y.toFixed(3)} ${pt.z.toFixed(3)}`);
             // send info to console
             if (this.state.probedPoints.length >= this.state.plannedPointCount) {
                 this.applyCompensation(this.state.gcode);
@@ -340,7 +341,11 @@ class App extends PureComponent {
             delta,
             feedrate
         } = this.state;
-        const isDisabled = isAutolevelRunning || this.state.bbox.max.x === undefined || this.state.bbox.max.y === undefined || this.state.bbox.min.x === undefined || this.state.bbox.min.y === undefined;
+        const isDisabled = isAutolevelRunning ||
+            this.state.bbox.max.x === undefined ||
+            this.state.bbox.max.y === undefined ||
+            this.state.bbox.min.x === undefined ||
+            this.state.bbox.min.y === undefined;
 
         // TODO: Split this in a separate component
         return (
@@ -472,7 +477,7 @@ class App extends PureComponent {
         const x = this.state.alignmentHole[index].x;
         const y = this.state.alignmentHole[index].y;
 
-        log.warn(`Probing hole ${index}`);
+        log.info(`Probing hole ${index}`);
         code.push('G21');
         code.push('G90');
         code.push(`G0 X${x} Y${y}`);
@@ -497,7 +502,7 @@ class App extends PureComponent {
     // TODO: Add function to clear current probes
     startAutolevel() {
         // Code got from https://github.com/kreso-t/cncjs-kt-ext
-        log.warn('Starting autoleveling');
+        log.info('Starting autoleveling');
         this.setState({ isAutolevelRunning: true });
 
         // let workCoordinates = {
@@ -556,14 +561,14 @@ class App extends PureComponent {
 
         this.setState({ plannedPointCount, probedPoints: [] });
 
-        log.warn(`Sending GCode:\n${code.join('\n')}\n`);
+        log.info(`Sending GCode:\n${code.join('\n')}\n`);
         // TODO: Throw a box with the G-code in it for confirmation like probe
         controller.command('gcode', code.join('\n'));
-        log.warn('Would start listener');
+        log.info('Would start listener');
     }
 
     applyCompensation(gcode) {
-        log.warn('Applying compensation');
+        log.info('Applying compensation');
 
         let lines = gcode.split('\n');
         let p0 = {
@@ -636,7 +641,7 @@ class App extends PureComponent {
                         }
                     } else {
                         result.push(lineStripped);
-                        console.log('WARNING: using relative mode may not produce correct results');
+                        log.warn('Using relative mode may not produce correct results');
                     }
                     p0 = {
                         x: pt.x,
@@ -648,7 +653,7 @@ class App extends PureComponent {
         });
 
         const newGcodeFileName = '#AL:' + this.state.gcodeFileName;
-        console.log(result.join('\n'));
+        log.debug(result.join('\n'));
         controller.command('gcode:load', newGcodeFileName, result.join('\n'));
         return result.join('\n');
     }
@@ -756,7 +761,7 @@ class App extends PureComponent {
 
         let points = this.getThreeClosestPoints(ptMM);
         if (points.length < 3) {
-            console.log('Cant find 3 closest points');
+            log.error('Cant find 3 closest points');
             return PtInOrMM;
         }
 
@@ -768,7 +773,7 @@ class App extends PureComponent {
             // find z at the point seg, on the plane defined by three points
             dz = pp.z - (normal.x * (ptMM.x - pp.x) + normal.y * (ptMM.y - pp.y)) / normal.z;
         } else {
-            console.log(this.formatPt(ptMM), 'normal.z is zero', this.formatPt(points[0]), this.formatPt(points[1]), this.formatPt(points[2]));
+            log.warn(this.formatPt(ptMM), 'normal.z is zero', this.formatPt(points[0]), this.formatPt(points[1]), this.formatPt(points[2]));
         }
 
         return {

@@ -25,6 +25,13 @@ module.exports = {
     target: 'web',
     context: path.resolve(__dirname, 'src/app'),
     devtool: 'cheap-module-eval-source-map',
+    devServer: {
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+            "Access-Control-Allow-Headers": "X-Requested-With, content-type, Authorization"
+        }
+    },
     entry: {
         polyfill: [
             path.resolve(__dirname, 'src/app/polyfill/index.js'),

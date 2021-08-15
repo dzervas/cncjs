@@ -13,7 +13,7 @@ import i18n from 'app/lib/i18n';
 import log from 'app/lib/log';
 import WidgetConfig from 'app/widgets/WidgetConfig';
 
-import { generateAutolevelGcode, applyCompensation } from './lib/autoLevel';
+import { applyCompensation, calculateBBox, generateAutolevelGcode } from './lib/autoLevel';
 import ConfirmModal from './ConfirmModal';
 
 class AutoLeveler extends PureComponent {
@@ -55,10 +55,6 @@ class AutoLeveler extends PureComponent {
                         title: 'PCB Autoleveler',
                         subtitle: `Do you want to clear the current mesh of the file "${this.state.gcodeFileName}" and probe the area again to generate it?`,
                         onConfirm: () => {
-                            this.setState({
-                                plannedPointCount: 0,
-                                probedPoints: []
-                            });
                             this.actions.doProbeArea(_event, true);
                         }
                     }
@@ -102,6 +98,26 @@ class AutoLeveler extends PureComponent {
                     }
                 }
             });
+        },
+        doCompensateGcode: () => {
+            const {
+                delta,
+                gcode,
+                probedPoints
+            } = this.state;
+
+            applyCompensation(gcode, probedPoints, delta);
+        },
+        doUnloadMesh: () => {
+            this.setState(prevState => ({
+                gcodeFileName: prevState.gcodeFileNameNext,
+                compensatedLoaded: false,
+                isAutolevelRunning: false,
+                plannedPointCount: 0,
+                probedPoints: []
+            }));
+
+            controller.command('gcode:stop', { force: true });
         }
     }
 
@@ -130,98 +146,63 @@ class AutoLeveler extends PureComponent {
         'gcode:load': (name, gcode) => {
             // Tiny gcode parser to calculate bounding box.
             // If this ext gets integrated to cncjs use `gcode:bbox` pubsub event
-            // TODO: Ask if mesh should be deleted
 
             if (name.indexOf('#AL:') === 0) {
-                log.warn(`Skipping gcode load of ${name} as it's pre-leveled`);
+                this.setState({ compensatedLoaded: true });
                 return;
+            } else {
+                this.setState({ compensatedLoaded: false });
             }
 
-            let xmin = null;
-            let xmax = null;
-            let ymin = null;
-            let ymax = null;
+            const { probedPoints } = this.state;
 
-            gcode.split('\n').forEach(line => {
-                if (line[0] !== 'G') {
-                    return;
-                }
-
-                let cmd = parseInt(line.substr(1, 2), 10);
-                if (cmd !== 0 && cmd !== 1 && cmd !== 2 && cmd !== 3 && cmd !== 38) {
-                    return;
-                }
-
-                let parser = /(?:\s?([XY]-?[0-9.]+)+)/g;
-
-                for (const matchGroups of [...line.matchAll(parser)]) {
-                    const match = matchGroups[1];
-                    let num = parseFloat(match.substr(1));
-                    if (match[0] === 'X') {
-                        if (num > xmax || xmax === null) {
-                            xmax = num;
-                        }
-                        if (num < xmin || xmin === null) {
-                            xmin = num;
-                        }
-                    } else if (match[0] === 'Y') {
-                        if (num > ymax || ymax === null) {
-                            ymax = num;
-                        }
-                        if (num < ymin || ymin === null) {
-                            ymin = num;
-                        }
-                    }
-                }
-            });
-
-            // TODO: Show it in the UI
-            log.info(`New BBox: xmin: ${xmin} xmax: ${xmax} ymin: ${ymin} ymax: ${ymax}`);
             this.setState({
                 gcode,
-                gcodeFileName: name,
+                gcodeFileNameNext: name,
                 gcodeLoaded: true,
-                bbox: {
-                    min: { x: xmin, y: ymin },
-                    max: { x: xmax, y: ymax }
-                },
             });
+
+            if (probedPoints.length > 0) {
+                this.setState({
+                    confirmModal: {
+                        show: true,
+                        title: 'PCB Factory',
+                        subtitle: `Do you want to use the current mesh of the file "${this.state.gcodeFileName}"`,
+                        onConfirm: () => {
+                            this.actions.doUnloadMesh();
+                            this.setState({
+                                gcodeFileName: name,
+                                bbox: calculateBBox(gcode),
+                            });
+                        }
+                    }
+                });
+            }
         },
         'gcode:unload': () => {
-            if (!this.state.gcodeLoaded || this.state.probedPoints.length === 0) {
-                this.setState({
-                    gcodeLoaded: false,
-                    gcode: '',
-                    probedPoints: []
-                });
-                return;
-            }
-
             this.setState({
-                confirmModal: {
-                    show: true,
-                    title: 'PCB Factory',
-                    subtitle: `Do you want to unload the current mesh of the file "${this.state.gcodeFileName}"`,
-                    onConfirm: () => {
-                        this.setState({
-                            gcodeLoaded: false,
-                            gcode: '',
-                            probedPoints: []
-                        });
-                    }
-                }
+                gcodeLoaded: false,
+                gcode: '',
             });
         },
         'serialport:read': (data) => {
             // TODO: Return a promise? or at the "start level" thing?
             // TODO: Add/remove this listener as needed
+            const {
+                isAutolevelRunning,
+                probedPoints,
+                plannedPointCount,
+                meshHistory,
+                gcodeFileName
+            } = this.state;
 
-            if (this.state.isAutolevelRunning && this.state.plannedPointCount <= this.state.probedPoints.length) {
+
+            if (isAutolevelRunning && probedPoints.length >= plannedPointCount) {
                 this.setState({ isAutolevelRunning: false });
                 return;
             }
 
-            if (!this.state.isAutolevelRunning || this.state.plannedPointCount <= this.state.probedPoints.length || data.indexOf('PRB') < 0) {
+            if (!isAutolevelRunning || plannedPointCount <= 0 || probedPoints.length >= plannedPointCount || data.indexOf('PRB') < 0) {
                 return;
             }
 
@@ -242,11 +223,7 @@ class AutoLeveler extends PureComponent {
                 z: prb[2] - this.state.wco.z
             };
 
-            if (this.state.plannedPointCount <= 0) {
-                return;
-            }
-
-            if (this.state.probedPoints.length === 0) {
+            if (probedPoints.length === 0) {
                 this.min_dz = pt.z;
                 this.max_dz = pt.z;
                 this.sum_dz = pt.z;
@@ -260,18 +237,33 @@ class AutoLeveler extends PureComponent {
                 this.sum_dz += pt.z;
             }
 
-            this.state.probedPoints.push(pt);
+            this.setState(prevState => ({
+                probedPoints: [...prevState.probedPoints, pt]
+            }));
+
             log.info(`Probed ${this.state.probedPoints.length}/${this.state.plannedPointCount}> ${pt.x.toFixed(3)} ${pt.y.toFixed(3)} ${pt.z.toFixed(3)}`);
+
             // send info to console
-            if (this.state.probedPoints.length >= this.state.plannedPointCount) {
-                applyCompensation(this.state.gcode, this.state.probedPoints, this.state.delta);
-                this.setState({ plannedPointCount: 0 });
+            if (probedPoints.length >= plannedPointCount) {
+                if (meshHistory.length >= 10) {
+                    this.setState(prevState => ({ meshHistory: prevState.slice(1) }));
+                }
+
+                this.setState(prevState => ({
+                    plannedPointCount: 0,
+                    meshHistory: [...prevState.meshHistory, {
+                        gcodeFileName,
+                        probedPoints,
+                        timestamp: Date.now()
+                    }]
+                }));
             }
         }
     }
 
     getInitialState() {
         return {
+            // Internal stuff
             confirmModal: {
                 show: false,
                 title: 'PCB Factory',
@@ -279,14 +271,28 @@ class AutoLeveler extends PureComponent {
                 onConfirm: () => {}
             },
 
+            // Controller
             units: METRIC_UNITS,
-            gcode: '',
-            gcodeFileName: '',
             wco: {
                 x: 0.000,
                 y: 0.000,
                 z: 0.000
             },
+
+            // Loaded G-code
+            compensatedLoaded: false,
+            gcode: '',
+            gcodeFileName: '',
+            gcodeFileNameNext: '',
+            gcodeLoaded: false,
+
+            // Settings
+            delta: this.config.get('delta', 10.0),
+            feedrate: this.config.get('feedrate', 25),
+            margin: this.config.get('margin', 2.5),
+            zSafe: this.config.get('zsafe', 2.0),
+
+            // Generated
             bbox: {
                 min: {
                     x: undefined,
@@ -298,12 +304,7 @@ class AutoLeveler extends PureComponent {
                 }
             },
             isAutolevelRunning: false,
-            delta: this.config.get('delta', 10.0),
-            zSafe: this.config.get('zsafe', 2.0),
-            feedrate: this.config.get('feedrate', 25),
-            margin: this.config.get('margin', 2.5),
-            gcodeLoaded: false,
-
+            meshHistory: this.config.get('meshhistory', []),
             plannedPointCount: 0,
             probedPoints: []
         };
@@ -319,16 +320,18 @@ class AutoLeveler extends PureComponent {
 
     componentDidUpdate(prevProps, prevState) {
         const {
+            delta,
+            feedrate,
             margin,
             zSafe,
-            delta,
-            feedrate
+            meshHistory
         } = this.state;
 
-        this.config.set('margin', margin);
-        this.config.set('zsafe', zSafe);
         this.config.set('delta', delta);
         this.config.set('feedrate', feedrate);
+        this.config.set('margin', margin);
+        this.config.set('zsafe', zSafe);
+        this.config.set('meshhistory', meshHistory);
     }
 
     addControllerEvents() {
@@ -348,26 +351,28 @@ class AutoLeveler extends PureComponent {
     render() {
         const actions = { ...this.actions };
         const {
-            margin,
-            zSafe,
+            confirmModal,
+
+            compensatedLoaded,
+            gcodeLoaded,
+            gcodeFileName,
+
             delta,
             feedrate,
+            margin,
+            zSafe,
+
             isAutolevelRunning,
-            confirmModal,
-            gcodeLoaded,
-            gcodeFileName
+            plannedPointCount,
+            probedPoints,
         } = this.state;
-        const isDisabled = isAutolevelRunning || !gcodeLoaded ||
-            this.state.bbox.max.x === undefined ||
-            this.state.bbox.max.y === undefined ||
-            this.state.bbox.min.x === undefined ||
-            this.state.bbox.min.y === undefined ||
-            gcodeFileName === undefined;
+
+        const isDisabled = isAutolevelRunning || !gcodeLoaded || gcodeFileName === undefined;
 
         return (
             <div>
                 <div className="form-group">
-                    <label className="control-label">{i18n._('Loaded G-code')}</label>
+                    <label className="control-label">{i18n._('Loaded Mesh')}</label>
                     <div className="input-group input-group-sm">
                         <input
                             type="text"
@@ -385,7 +390,7 @@ class AutoLeveler extends PureComponent {
                             step="0.5"
                             min="0"
                             value={margin}
-                            disabled={isDisabled}
+                            disabled={isAutolevelRunning}
                             onChange={actions.onChangeMargin}
                         />
                     </div>
@@ -398,7 +403,7 @@ class AutoLeveler extends PureComponent {
                             step="0.5"
                             min="0.5"
                             value={zSafe}
-                            disabled={isDisabled}
+                            disabled={isAutolevelRunning}
                             onChange={actions.onChangeZSafe}
                         />
                     </div>
@@ -411,7 +416,7 @@ class AutoLeveler extends PureComponent {
                             step="1"
                             min="1"
                             value={delta}
-                            disabled={isDisabled}
+                            disabled={isAutolevelRunning}
                             onChange={actions.onChangeDelta}
                         />
                     </div>
@@ -424,7 +429,7 @@ class AutoLeveler extends PureComponent {
                             step="10"
                             min="1"
                             value={feedrate}
-                            disabled={isDisabled}
+                            disabled={isAutolevelRunning}
                             onChange={actions.onChangeFeedrate}
                         />
                     </div>
@@ -437,7 +442,23 @@ class AutoLeveler extends PureComponent {
                             disabled={isDisabled}
                             onClick={actions.doProbeArea}
                         >
-                            {i18n._('Run Autolevel')}
+                            {i18n._('Start Probing')}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={isDisabled || compensatedLoaded || probedPoints.length === 0 || plannedPointCount > probedPoints.length}
+                            onClick={actions.doCompensateGcode}
+                        >
+                            {i18n._('Compensate G-code')}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-danger"
+                            disabled={isAutolevelRunning || probedPoints.length === 0}
+                            onClick={actions.doUnloadMesh}
+                        >
+                            {i18n._('Unload Mesh')}
                         </button>
                     </div>
                 </div>

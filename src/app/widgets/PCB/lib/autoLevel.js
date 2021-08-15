@@ -5,6 +5,52 @@ import {
 } from 'app/constants';
 // Code got from https://github.com/kreso-t/cncjs-kt-ext
 
+function calculateBBox(gcode) {
+    let xmin = null;
+    let xmax = null;
+    let ymin = null;
+    let ymax = null;
+
+    gcode.split('\n').forEach(line => {
+        if (line[0] !== 'G') {
+            return;
+        }
+
+        let cmd = parseInt(line.substr(1, 2), 10);
+        if (cmd !== 0 && cmd !== 1 && cmd !== 2 && cmd !== 3 && cmd !== 38) {
+            return;
+        }
+
+        let parser = /(?:\s?([XY]-?[0-9.]+)+)/g;
+
+        for (const matchGroups of [...line.matchAll(parser)]) {
+            const match = matchGroups[1];
+            let num = parseFloat(match.substr(1));
+            if (match[0] === 'X') {
+                if (num > xmax || xmax === null) {
+                    xmax = num;
+                }
+                if (num < xmin || xmin === null) {
+                    xmin = num;
+                }
+            } else if (match[0] === 'Y') {
+                if (num > ymax || ymax === null) {
+                    ymax = num;
+                }
+                if (num < ymin || ymin === null) {
+                    ymin = num;
+                }
+            }
+        }
+    });
+
+    log.info(`New BBox: xmin: ${xmin} xmax: ${xmax} ymin: ${ymin} ymax: ${ymax}`);
+    return {
+        min: { x: xmin, y: ymin },
+        max: { x: xmax, y: ymax }
+    };
+}
+
 function generateAutolevelGcode(bbox, margin, delta, zSafe, feedrate) {
     log.info('Starting autoleveling');
 
@@ -287,4 +333,4 @@ function convertUnits(value, inUnits, outUnits) {
     return value;
 }
 
-export { generateAutolevelGcode, applyCompensation };
+export { applyCompensation, calculateBBox, generateAutolevelGcode };

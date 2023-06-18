@@ -537,11 +537,16 @@
     "PCB Factory Widget": "PCB Factory Widget",
     "This widget helps you create PCBs.": "This widget helps you create PCBs.",
     "PCB Factory": "PCB Factory",
-    "Loaded G-code": "Loaded G-code",
     "Margins": "Margins",
     "Z Safe": "Z Safe",
     "Delta": "Delta",
     "Feedrate": "Feedrate",
-    "Run Autolevel": "Run Autolevel",
-    "Confirm": "Confirm"
+    "Confirm": "Confirm",
+    "Last Used: {{timestamp}}": "Last Used: {{timestamp}}",
+    "Loaded Mesh": "Loaded Mesh",
+    "No previous meshes available": "No previous meshes available",
+    "Choose a mesh": "Choose a mesh",
+    "Start Probing": "Start Probing",
+    "Compensate G-code": "Compensate G-code",
+    "Unload Mesh": "Unload Mesh"
 }

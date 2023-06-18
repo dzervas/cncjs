@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types';
 import React, { PureComponent } from 'react';
+import Select from 'react-select';
 
 import {
     // Units
@@ -8,10 +9,12 @@ import {
     // Controllers
     GRBL
 } from 'app/constants';
+import Space from 'app/components/Space';
 import controller from 'app/lib/controller';
 import i18n from 'app/lib/i18n';
 import log from 'app/lib/log';
 import WidgetConfig from 'app/widgets/WidgetConfig';
+import map from 'lodash/map';
 
 import { applyCompensation, calculateBBox, generateAutolevelGcode } from './lib/autoLevel';
 import ConfirmModal from './ConfirmModal';
@@ -117,7 +120,7 @@ class AutoLeveler extends PureComponent {
                 probedPoints: []
             }));
 
-            controller.command('gcode:stop', { force: true });
+            // controller.command('gcode:stop', { force: true });
         }
     }
 
@@ -176,6 +179,11 @@ class AutoLeveler extends PureComponent {
                             });
                         }
                     }
+                });
+            } else {
+                this.setState({
+                    gcodeFileName: name,
+                    bbox: calculateBBox(gcode),
                 });
             }
         },
@@ -348,6 +356,32 @@ class AutoLeveler extends PureComponent {
         });
     }
 
+    renderMeshHistoryOption(option) {
+        const { label, inuse, timestamp } = option;
+        const styles = {
+            option: {
+                whiteSpace: 'nowrap',
+                textOverflow: 'ellipsis',
+                overflow: 'hidden'
+            }
+        };
+
+        return (
+            <div style={styles.option} title={label}>
+                <div>
+                    {inuse && (
+                        <span>
+                            <i className="fa fa-lock" />
+                            <Space width="8" />
+                        </span>
+                    )}
+                    {label}
+                </div>
+                <i>{i18n._('Last Used: {{timestamp}}', { timestamp })}</i>
+            </div>
+        );
+    }
+
     render() {
         const actions = { ...this.actions };
         const {
@@ -363,6 +397,7 @@ class AutoLeveler extends PureComponent {
             zSafe,
 
             isAutolevelRunning,
+            meshHistory,
             plannedPointCount,
             probedPoints,
         } = this.state;
@@ -374,12 +409,35 @@ class AutoLeveler extends PureComponent {
                 <div className="form-group">
                     <label className="control-label">{i18n._('Loaded Mesh')}</label>
                     <div className="input-group input-group-sm">
-                        <input
-                            type="text"
-                            className="form-control"
-                            value={gcodeLoaded && gcodeFileName}
-                            disabled={true}
-                        />
+                        <div className="col col-xs-6">
+                            <Select
+                                backspaceRemoves={false}
+                                className="sm"
+                                clearable={false}
+                                disabled={isDisabled}
+                                name="meshHistory"
+                                noResultsText={i18n._('No previous meshes available')}
+                                onChange={actions.onChangeMeshHistoryOption}
+                                optionRenderer={this.renderMeshHistoryOption}
+                                options={map(meshHistory, (o) => ({
+                                    value: o.gcodeFileName,
+                                    label: o.gcodeFileName,
+                                    timestamp: o.timestamp
+                                }))}
+                                placeholder={i18n._('Choose a mesh')}
+                                searchable={false}
+                                // value={mesh}
+                                // valueRenderer={this.renderMeshHistoryOption}
+                            />
+                        </div>
+                        <div className="col col-xs-6">
+                            <input
+                                type="text"
+                                className="form-control"
+                                value={gcodeLoaded && gcodeFileName}
+                                disabled={true}
+                            />
+                        </div>
                     </div>
 
                     <label className="control-label">{i18n._('Margins')}</label>
